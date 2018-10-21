@@ -1,0 +1,1283 @@
+Index: build.gradle
+===================================================================
+--- build.gradle	(revision 0)
++++ build.gradle	(working copy)
+@@ -0,0 +1,15 @@
++group 'org.pbc.logViewer'
++version '1.0-SNAPSHOT'
++
++apply plugin: 'java'
++
++sourceCompatibility = 1.8
++
++repositories {
++    mavenCentral()
++}
++
++dependencies {
++    testCompile group: 'junit', name: 'junit', version: '4.12'
++    compile 'com.google.code.gson:gson:2.3.+'
++}
+Index: src/main/java/org/pbc/logViewer/controller/LogController.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/controller/LogController.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/controller/LogController.java	(working copy)
+@@ -0,0 +1,45 @@
++package org.pbc.logViewer.controller;
++
++import javafx.fxml.FXML;
++import javafx.fxml.Initializable;
++import javafx.scene.control.Label;
++import javafx.scene.control.ScrollPane;
++import org.pbc.logViewer.network.Url;
++import org.pbc.logViewer.threads.DataReaderWriter;
++import org.pbc.logViewer.threads.DataViewer;
++
++import java.awt.*;
++import java.net.URL;
++import java.util.ResourceBundle;
++
++import static org.pbc.logViewer.launcher.Main.executor;
++
++public class LogController implements Initializable {
++
++    @FXML
++    public Label labelLog;
++
++    @FXML
++    public ScrollPane scrollPane;
++
++    private static LogController logController;
++
++    @Override
++    public void initialize(final URL location, final ResourceBundle resources) {
++        final Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
++
++        scrollPane.setMinWidth(screenSize.getWidth());
++        scrollPane.setMinHeight(screenSize.getHeight());
++        scrollPane.setVvalue(1.0);
++        logController = this;
++    }
++
++    public static LogController getInstance() {
++        return logController;
++    }
++
++    public void loadLog() {
++        executor.execute(new DataReaderWriter(labelLog, Url.getLogUrl()));
++        executor.execute(new DataViewer(labelLog));
++    }
++}
+Index: src/main/java/org/pbc/logViewer/controller/MainController.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/controller/MainController.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/controller/MainController.java	(working copy)
+@@ -0,0 +1,19 @@
++package org.pbc.logViewer.controller;
++
++import javafx.fxml.FXML;
++import javafx.fxml.Initializable;
++import javafx.scene.control.TabPane;
++
++import java.net.URL;
++import java.util.ResourceBundle;
++
++public class MainController implements Initializable {
++
++    @FXML
++    private TabPane tabPane;
++
++    @Override
++    public void initialize(final URL location, final ResourceBundle resources) {
++        tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
++    }
++}
+Index: src/main/java/org/pbc/logViewer/controller/StatisticsController.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/controller/StatisticsController.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/controller/StatisticsController.java	(working copy)
+@@ -0,0 +1,151 @@
++package org.pbc.logViewer.controller;
++
++import javafx.application.Platform;
++import javafx.event.ActionEvent;
++import javafx.event.EventHandler;
++import javafx.fxml.FXML;
++import javafx.fxml.Initializable;
++import javafx.scene.control.Button;
++import javafx.scene.control.*;
++import javafx.scene.control.Label;
++import javafx.scene.control.ScrollPane;
++import javafx.scene.control.TextField;
++import org.pbc.logViewer.model.BlockAndCountModel;
++import org.pbc.logViewer.model.BlockStatusModel;
++import org.pbc.logViewer.model.StatisticsModel;
++import org.pbc.logViewer.network.Url;
++import org.pbc.logViewer.threads.DataReaderWriter;
++import org.pbc.logViewer.utils.MessageConstant;
++import org.pbc.logViewer.utils.StringConstants;
++import org.pbc.logViewer.utils.Utility;
++
++import java.awt.*;
++import java.net.URL;
++import java.util.List;
++import java.util.ResourceBundle;
++import java.util.stream.Collectors;
++
++import static org.pbc.logViewer.launcher.Main.executor;
++
++public class StatisticsController implements Initializable, EventHandler<ActionEvent> {
++
++    @FXML
++    public ScrollPane scrollPane;
++
++    @FXML
++    public Label labelTotalBlocks, labelDeliveredBlocks, labelAvailableBlocks, labelBlocksInfo;
++
++    @FXML
++    public Hyperlink hyRefresh;
++
++    @FXML
++    public TextField txtSearch;
++
++    @FXML
++    public Button btnSearch;
++
++    @FXML
++    private RadioButton rbTxnId;
++
++    @FXML
++    private ToggleGroup radioToggle;
++
++    private static StatisticsController statisticsController;
++
++    private List<BlockStatusModel> blockStatusModelList;
++
++    @Override
++    public void initialize(final URL location, final ResourceBundle resources) {
++        final Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
++
++        scrollPane.setMinWidth(screenSize.getWidth() - 50);
++        scrollPane.setMinHeight(screenSize.getHeight() - 100);
++
++        statisticsController = this;
++
++        hyRefresh.setOnAction(this);
++        btnSearch.setOnAction(this);
++        txtSearch.textProperty().addListener((observable, oldValue, newValue) -> {
++            if (newValue.length() <= 0) {
++                btnSearch.setDisable(true);
++            } else {
++                btnSearch.setDisable(false);
++            }
++        });
++
++        radioToggle.selectedToggleProperty().addListener((observableValue, toggle, t1) -> {
++            if (null != radioToggle.getSelectedToggle()) {
++                txtSearch.setPromptText(MessageConstant.TXT_ENTER + StringConstants.SPACE + radioToggle.getSelectedToggle().getUserData().toString());
++            }
++        });
++
++    }
++
++    public static StatisticsController getInstance() {
++        return statisticsController;
++    }
++
++    public void loadStatistics() {
++        executor.execute(new DataReaderWriter(labelBlocksInfo, Url.getStatisticsUrl(1)));
++    }
++
++    public void update(final StatisticsModel statisticsModel) {
++        if (statisticsModel.getStatus().equals(StringConstants.ERR)) {
++            updateError(statisticsModel.getMessage());
++            return;
++        }
++        final BlockAndCountModel blockAndCountModel = statisticsModel.getResultSet();
++        if (blockAndCountModel == null) {
++            updateError(MessageConstant.PROBLEM_FACING_STATICS);
++            return;
++        }
++        blockStatusModelList = blockAndCountModel.getBlocks();
++        if (null == blockStatusModelList || blockStatusModelList.isEmpty()) {
++            updateError(MessageConstant.NO_BLOCK);
++            return;
++        }
++
++        Platform.runLater(() -> labelAvailableBlocks.setText(String.valueOf(blockAndCountModel.getSavedCount())));
++        Platform.runLater(() -> labelDeliveredBlocks.setText(String.valueOf(blockAndCountModel.getDeletedCount())));
++        Platform.runLater(() -> labelTotalBlocks.setText(String.valueOf(blockAndCountModel.getTotalBlocks())));
++
++        showBlocksInfo(blockStatusModelList);
++    }
++
++    private void showBlocksInfo(final List<BlockStatusModel> blockStatusModelList) {
++        if (null == blockStatusModelList || blockStatusModelList.isEmpty()) {
++            Platform.runLater(() -> labelBlocksInfo.setText(MessageConstant.NO_SEARCH_RESULT));
++            return;
++        }
++        Platform.runLater(() -> labelBlocksInfo.setText(StringConstants.EMPTY_STRING));
++        for (int i = 0; i < blockStatusModelList.size(); i++) {
++            final int finalI = i;
++            Platform.runLater(() -> labelBlocksInfo.setText(
++                    labelBlocksInfo.getText() + blockStatusModelList.get(finalI).toString()));
++        }
++    }
++
++    private void updateError(final String errorMessage) {
++        Platform.runLater(() -> labelBlocksInfo.setText(errorMessage));
++    }
++
++    @Override
++    public void handle(final ActionEvent event) {
++        if (event.getSource().equals(hyRefresh)) {
++            labelBlocksInfo.setText(MessageConstant.TXT_LOADING_STATICS);
++            loadStatistics();
++        } else if (event.getSource().equals(btnSearch)) {
++            final String id;
++            if (radioToggle.getSelectedToggle().equals(rbTxnId)) {
++                id = Utility.calculateHash(txtSearch.getText().getBytes(), "SHA-256");
++            } else {
++                id = txtSearch.getText();
++            }
++            if (null != blockStatusModelList && !blockStatusModelList.isEmpty()) {
++                final List<BlockStatusModel> collectedStatusList = blockStatusModelList.stream().filter(blockStatusModel ->
++                        blockStatusModel.getTransactionId().contains(id)).collect(Collectors.toList());
++                showBlocksInfo(collectedStatusList);
++            }
++        }
++    }
++}
+Index: src/main/java/org/pbc/logViewer/launcher/AppConstants.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/launcher/AppConstants.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/launcher/AppConstants.java	(working copy)
+@@ -0,0 +1,10 @@
++package org.pbc.logViewer.launcher;
++
++public interface AppConstants {
++    //    String NODE_1 = "192.168.11.122";
++    String NODE_1 = "54.203.197.40";
++    String NODE_2 = "34.212.133.169";
++    String NODE_3 = "54.202.229.230";
++    long DEFAULT_REFRESH_INTERVAL = 1000;//ms
++    int MAX_LINES = 50;
++}
+Index: src/main/java/org/pbc/logViewer/launcher/Main.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/launcher/Main.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/launcher/Main.java	(working copy)
+@@ -0,0 +1,203 @@
++package org.pbc.logViewer.launcher;
++
++import javafx.application.Application;
++import javafx.application.Platform;
++import javafx.beans.value.ObservableValue;
++import javafx.fxml.FXMLLoader;
++import javafx.fxml.JavaFXBuilderFactory;
++import javafx.geometry.Pos;
++import javafx.scene.Group;
++import javafx.scene.Parent;
++import javafx.scene.Scene;
++import javafx.scene.control.*;
++import javafx.scene.control.Dialog;
++import javafx.scene.control.Label;
++import javafx.scene.control.TextField;
++import javafx.scene.layout.GridPane;
++import javafx.scene.layout.HBox;
++import javafx.stage.Stage;
++import javafx.util.Pair;
++import org.pbc.logViewer.controller.LogController;
++import org.pbc.logViewer.controller.StatisticsController;
++import org.pbc.logViewer.utils.MessageConstant;
++import org.pbc.logViewer.utils.StringConstants;
++
++import java.awt.*;
++import java.io.File;
++import java.io.IOException;
++import java.net.URL;
++import java.util.Optional;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
++
++import static org.pbc.logViewer.launcher.AppConstants.*;
++import static org.pbc.logViewer.network.Url.TARGET_NODE;
++
++public class Main extends Application {
++
++    public static File FILE_PATH;
++    public static long REFRESH_INTERVAL = DEFAULT_REFRESH_INTERVAL;
++    public static final ExecutorService executor = Executors.newFixedThreadPool(3);
++    private Stage mainStage;
++
++    public static void main(final String[] args) {
++        launch(args);
++    }
++
++    @Override
++    public void start(final Stage stage) {
++        try {
++            this.mainStage = stage;
++            final URL location = getClass().getResource("/main.fxml");
++            final FXMLLoader fxmlLoader = new FXMLLoader();
++            fxmlLoader.setLocation(location);
++            fxmlLoader.setBuilderFactory(new JavaFXBuilderFactory());
++
++            final Parent root = fxmlLoader.load(location.openStream());
++
++            final Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
++            final Scene scene = new Scene(new Group(), screenSize.getWidth(), screenSize.getHeight());
++            scene.setRoot(root);
++            mainStage.setScene(scene);
++            mainStage.setTitle(MessageConstant.DEFAULT_TITLE);
++            mainStage.show();
++            showDialog(scene);
++
++            mainStage.setOnCloseRequest(event -> {
++                executor.shutdownNow();
++                Platform.exit();
++                System.exit(0);
++            });
++        } catch (final Exception e) {
++            e.printStackTrace();
++        }
++    }
++
++    private void showDialog(final Scene scene) {
++        // Create the custom dialog.
++        final Dialog<Pair<String, String>> dialog = new Dialog<>();
++        dialog.setTitle(MessageConstant.DIALOG_TITLE);
++        dialog.setHeaderText(MessageConstant.DIALOG_HEADER_TEXT);
++        dialog.initOwner(scene.getWindow());
++        dialog.setResizable(false);
++        // Set the button types.
++        final ButtonType btnOk = new ButtonType(StringConstants.BUTTON_GO, ButtonBar.ButtonData.OK_DONE);
++
++        dialog.getDialogPane().getButtonTypes().addAll(btnOk);
++
++        final GridPane grid = new GridPane();
++        grid.setHgap(10);
++        grid.setVgap(10);
++        grid.setPadding(new javafx.geometry.Insets(20, 150, 10, 20));
++        grid.setMinWidth(500);
++
++        final ToggleGroup group = new ToggleGroup();
++        final RadioButton rb1 = new RadioButton(MessageConstant.NODE1);
++        rb1.setToggleGroup(group);
++        rb1.setSelected(true);
++        rb1.setUserData(NODE_1);
++
++        final RadioButton rb2 = new RadioButton(MessageConstant.NODE2);
++        rb2.setToggleGroup(group);
++        rb2.setUserData(NODE_2);
++
++        final RadioButton rb3 = new RadioButton(MessageConstant.NODE3);
++        rb3.setToggleGroup(group);
++        rb3.setUserData(NODE_3);
++
++        final HBox hBox = new HBox();
++        final Label label = new Label(MessageConstant.TXT_REFRESH_INTERVAL);
++
++        final TextField textField = new TextField();
++        textField.setPromptText(MessageConstant.TXT_INTERVAL_SECONDS);
++        textField.textProperty().addListener((observable, oldValue, newValue) -> {
++            if (newValue.length() <= 3) {
++                if (!newValue.matches("\\d*")) {
++                    textField.setText(newValue.replaceAll("[^\\d]", StringConstants.EMPTY_STRING));
++                }
++            } else {
++                textField.setText(oldValue);
++            }
++            if (textField.getText().equals(StringConstants.EMPTY_STRING)) {
++                dialog.getDialogPane().lookupButton(btnOk).setDisable(true);
++            } else {
++                dialog.getDialogPane().lookupButton(btnOk).setDisable(false);
++            }
++        });
++
++        hBox.getChildren().addAll(label, textField);
++        hBox.setAlignment(Pos.CENTER);
++
++        grid.add(rb1, 0, 0);
++        grid.add(rb2, 0, 1);
++        grid.add(rb3, 0, 2);
++        grid.add(hBox, 0, 3);
++
++        dialog.getDialogPane().setContent(grid);
++        dialog.getDialogPane().lookupButton(btnOk).setDisable(true);
++
++        group.selectedToggleProperty().addListener((ObservableValue<? extends Toggle> observable, Toggle oldValue, Toggle newValue) -> {
++            if (group.getSelectedToggle() != null) {
++                TARGET_NODE = group.getSelectedToggle().getUserData().toString();
++                switch (TARGET_NODE) {
++                    case NODE_1:
++                        setTitle(MessageConstant.TXT_NODE1_VIEWER);
++                        break;
++                    case NODE_2:
++                        setTitle(MessageConstant.TXT_NODE2_VIEWER);
++                        break;
++                    case NODE_3:
++                        setTitle(MessageConstant.TXT_NODE3_VIEWER);
++                        break;
++                }
++            }
++        });
++
++        final Optional<Pair<String, String>> result = dialog.showAndWait();
++        if (result.isPresent()) {
++            //OK Pressed
++            createLogFile();
++            final String interval = textField.getText();
++            REFRESH_INTERVAL = Long.parseLong(interval) * 1000;
++            LogController.getInstance().loadLog();
++            StatisticsController.getInstance().loadStatistics();
++        } else {
++            //Cancel
++            System.exit(0);
++        }
++    }
++
++    private void setTitle(final String title) {
++        Platform.runLater(() -> mainStage.setTitle(title));
++    }
++
++    private void createLogFile() {
++        final String fileName;
++        switch (TARGET_NODE) {
++            case NODE_1:
++                fileName = "node1_reports.txt";
++                break;
++            case NODE_2:
++                fileName = "node2_reports.txt";
++                break;
++            case NODE_3:
++                fileName = "node3_reports.txt";
++                break;
++            default:
++                fileName = "node1_reports.txt";
++                break;
++        }
++
++        FILE_PATH = new File(System.getProperty("user.home"), fileName);
++        System.out.println(FILE_PATH.getPath());
++        try {
++            if (FILE_PATH.exists()) {
++                FILE_PATH.delete();
++            }
++            FILE_PATH.createNewFile();
++            FILE_PATH.setWritable(true);
++        } catch (final IOException e) {
++            e.printStackTrace();
++        }
++    }
++}
+Index: src/main/java/org/pbc/logViewer/model/BlockAndCountModel.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/model/BlockAndCountModel.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/model/BlockAndCountModel.java	(working copy)
+@@ -0,0 +1,43 @@
++package org.pbc.logViewer.model;
++
++import java.util.List;
++
++public class BlockAndCountModel {
++
++    private long totalBlocks;
++    private long savedCount;
++    private long deletedCount;
++    private List<BlockStatusModel> blocks;
++
++    public long getTotalBlocks() {
++        return totalBlocks;
++    }
++
++    public void setTotalBlocks(long totalBlocks) {
++        this.totalBlocks = totalBlocks;
++    }
++
++    public long getSavedCount() {
++        return savedCount;
++    }
++
++    public void setSavedCount(long savedCount) {
++        this.savedCount = savedCount;
++    }
++
++    public long getDeletedCount() {
++        return deletedCount;
++    }
++
++    public void setDeletedCount(long deletedCount) {
++        this.deletedCount = deletedCount;
++    }
++
++    public List<BlockStatusModel> getBlocks() {
++        return blocks;
++    }
++
++    public void setBlocks(List<BlockStatusModel> blocks) {
++        this.blocks = blocks;
++    }
++}
+Index: src/main/java/org/pbc/logViewer/model/BlockStatusModel.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/model/BlockStatusModel.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/model/BlockStatusModel.java	(working copy)
+@@ -0,0 +1,95 @@
++package org.pbc.logViewer.model;
++
++import java.io.Serializable;
++
++public class BlockStatusModel implements Serializable {
++
++    private static final long serialVersionUID = 1L;
++    private final StringBuilder blockInfo = new StringBuilder();
++
++    private String transactionId;
++    private String tag;
++    private String receiverAddress;
++    private String status;
++    private String createdAt;
++    private String updatedAt;
++
++    public BlockStatusModel() {
++        // Default
++    }
++
++    public BlockStatusModel(final String tag, final String transactionId, final String status) {
++        this.transactionId = transactionId;
++        this.status = status;
++        this.tag = tag;
++    }
++
++    public String getTransactionId() {
++        return transactionId;
++    }
++
++    public BlockStatusModel setTransactionId(final String transactionId) {
++        this.transactionId = transactionId;
++        return this;
++    }
++
++    public String getTag() {
++        return tag;
++    }
++
++    public BlockStatusModel setTag(final String tag) {
++        this.tag = tag;
++        return this;
++    }
++
++    private String getReceiverAddress() {
++        return receiverAddress;
++    }
++
++    public BlockStatusModel setReceiverAddress(final String receiverAddress) {
++        this.receiverAddress = receiverAddress;
++        return this;
++    }
++
++    public String getStatus() {
++        return status;
++    }
++
++    public BlockStatusModel setStatus(final String status) {
++        this.status = status;
++        return this;
++    }
++
++    public String getCreatedAt() {
++        return createdAt;
++    }
++
++    public BlockStatusModel setCreatedAt(final String createdAt) {
++        this.createdAt = createdAt;
++        return this;
++    }
++
++    private String getUpdatedAt() {
++        return updatedAt;
++    }
++
++    public BlockStatusModel setUpdatedAt(final String updatedAt) {
++        this.updatedAt = updatedAt;
++        return this;
++    }
++
++    @Override
++    public String toString() {
++        blockInfo.setLength(0);
++        blockInfo.append("Hash of TxnId: ")
++                .append(this.getTransactionId())
++                .append("\n\nReceiver Address: ")
++                .append(this.getReceiverAddress())
++                .append("\n\nStatus: ")
++                .append(this.getStatus())
++                .append("\n\nUpdated At: ")
++                .append(this.getUpdatedAt())
++                .append("\n\n=========================================\n\n");
++        return blockInfo.toString();
++    }
++}
+Index: src/main/java/org/pbc/logViewer/model/LogModel.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/model/LogModel.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/model/LogModel.java	(working copy)
+@@ -0,0 +1,23 @@
++package org.pbc.logViewer.model;
++
++public class LogModel {
++
++    private long currentPointer;
++    private String logData;
++
++    public long getCurrentPointer() {
++        return currentPointer;
++    }
++
++    public void setCurrentPointer(final long currentPointer) {
++        this.currentPointer = currentPointer;
++    }
++
++    public String getLogData() {
++        return logData;
++    }
++
++    public void setLogData(final String logData) {
++        this.logData = logData;
++    }
++}
+Index: src/main/java/org/pbc/logViewer/model/StatisticsModel.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/model/StatisticsModel.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/model/StatisticsModel.java	(working copy)
+@@ -0,0 +1,32 @@
++package org.pbc.logViewer.model;
++
++public class StatisticsModel {
++
++    private String status;
++    private String message;
++    private BlockAndCountModel resultSet;
++
++    public String getStatus() {
++        return status;
++    }
++
++    public void setStatus(final String status) {
++        this.status = status;
++    }
++
++    public String getMessage() {
++        return message;
++    }
++
++    public void setMessage(final String message) {
++        this.message = message;
++    }
++
++    public BlockAndCountModel getResultSet() {
++        return resultSet;
++    }
++
++    public void setResultSet(final BlockAndCountModel resultSet) {
++        this.resultSet = resultSet;
++    }
++}
+Index: src/main/java/org/pbc/logViewer/network/Client.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/network/Client.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/network/Client.java	(working copy)
+@@ -0,0 +1,94 @@
++package org.pbc.logViewer.network;
++
++import com.google.gson.Gson;
++import org.pbc.logViewer.model.LogModel;
++import org.pbc.logViewer.model.StatisticsModel;
++import org.pbc.logViewer.utils.StringConstants;
++
++import java.io.BufferedReader;
++import java.io.InputStreamReader;
++import java.net.HttpURLConnection;
++import java.net.URL;
++
++public class Client {
++
++    private static Client client = null;
++    private BufferedReader bufferedReader = null;
++    private HttpURLConnection con = null;
++    private URL obj = null;
++    private final Gson gson = new Gson();
++    private String TARGET_URL = StringConstants.EMPTY_STRING;
++
++    private Client() {
++        //Singleton
++    }
++
++    public synchronized static Client getInstance() {
++        if (null == client) {
++            client = new Client();
++        }
++        return client;
++    }
++
++    public Client setPointerLocation(final long pointerLocation) {
++        this.TARGET_URL += pointerLocation;
++        return client;
++    }
++
++    public Client setUrl(final String url) {
++        this.TARGET_URL = url;
++        return this;
++    }
++
++    public LogModel getLogData() {
++        try {
++            final String response = call();
++            if (!response.isEmpty()) {
++                return gson.fromJson(response, LogModel.class);
++            } else {
++                return null;
++            }
++        } catch (final Exception e) {
++            System.out.println("Still loading log data...");
++            return null;
++        }
++    }
++
++    public StatisticsModel getStatisticsData() {
++        try {
++            final String response = call();
++            if (!response.isEmpty()) {
++                return gson.fromJson(response, StatisticsModel.class);
++            } else {
++                return null;
++            }
++        } catch (final Exception e) {
++            System.out.println("Still Loading statistics data...");
++            return null;
++        }
++    }
++
++    private synchronized String call() {
++        try {
++            obj = new URL(TARGET_URL);
++            con = (HttpURLConnection) obj.openConnection();
++            con.addRequestProperty("Content-Type", "text/plain");
++            final int responseCode = con.getResponseCode();
++            if (responseCode == 200) {
++                bufferedReader = new BufferedReader(
++                        new InputStreamReader(con.getInputStream()));
++                String inputLine;
++                final StringBuilder response = new StringBuilder();
++                while ((inputLine = bufferedReader.readLine()) != null) {
++                    response.append(inputLine);
++                }
++                return response.toString();
++            } else {
++                return StringConstants.EMPTY_STRING;
++            }
++        } catch (final Exception e) {
++            System.out.println("Error occurred during fetching data : " + e.getMessage());
++            return StringConstants.EMPTY_STRING;
++        }
++    }
++}
+Index: src/main/java/org/pbc/logViewer/network/Url.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/network/Url.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/network/Url.java	(working copy)
+@@ -0,0 +1,17 @@
++package org.pbc.logViewer.network;
++
++
++import org.pbc.logViewer.launcher.AppConstants;
++
++public class Url {
++
++    public static String TARGET_NODE = AppConstants.NODE_1;
++
++    public static String getLogUrl() {
++        return "http://" + TARGET_NODE + ":8080/PrivateBlockChain/apis/getLog?pointerLocation=";
++    }
++
++    public static String getStatisticsUrl(final int pageNumber) {
++        return "http://" + TARGET_NODE + ":8080/PrivateBlockChain/apis/getStatistics?pageNo=" + pageNumber;
++    }
++}
+Index: src/main/java/org/pbc/logViewer/threads/DataReaderWriter.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/threads/DataReaderWriter.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/threads/DataReaderWriter.java	(working copy)
+@@ -0,0 +1,92 @@
++package org.pbc.logViewer.threads;
++
++import javafx.application.Platform;
++import javafx.scene.control.Label;
++import org.pbc.logViewer.controller.StatisticsController;
++import org.pbc.logViewer.model.LogModel;
++import org.pbc.logViewer.model.StatisticsModel;
++import org.pbc.logViewer.network.Client;
++import org.pbc.logViewer.utils.StringConstants;
++
++import java.io.IOException;
++import java.io.RandomAccessFile;
++
++import static org.pbc.logViewer.launcher.Main.FILE_PATH;
++import static org.pbc.logViewer.launcher.Main.REFRESH_INTERVAL;
++
++public class DataReaderWriter implements Runnable {
++
++    private boolean keepRunning = true;
++    private long filePointer = 0;
++    private final Label label;
++    private String URL = StringConstants.EMPTY_STRING;
++    private boolean isFirst = true;
++
++    public DataReaderWriter(final Label label, final String url) {
++        this.label = label;
++        this.URL = url;
++    }
++
++    @Override
++    public void run() {
++        try {
++            while (keepRunning) {
++                try {
++                    if (URL.contains("pointerLocation")) {
++                        final LogModel data = Client.getInstance().setUrl(URL).setPointerLocation(filePointer).getLogData();
++                        if (null != data) {
++                            filePointer = data.getCurrentPointer();
++                            final String line = data.getLogData();
++                            if (isFirst && null != label) {
++                                isFirst = false;
++                            }
++                            if (null != line && !line.isEmpty()) {
++                                appendLine("\n\n" + line.trim());
++                            }
++                        }
++                        Thread.sleep(REFRESH_INTERVAL);
++                    } else {
++                        final StatisticsModel statisticsModel = Client.getInstance().setUrl(URL).getStatisticsData();
++                        if (null != statisticsModel) {
++                            StatisticsController.getInstance().update(statisticsModel);
++                            keepRunning = false;
++                        }
++                        Thread.sleep(2000);
++                    }
++                } catch (final InterruptedException ie) {
++                    //No Action
++                } catch (final Exception e) {
++                    e.printStackTrace();
++                }
++            }
++        } catch (final Exception e) {
++            e.printStackTrace();
++        }
++    }
++
++    private void appendMessage(final String message) {
++        Platform.runLater(() -> label.setText(message));
++    }
++
++    private void appendLine(final String line) {
++        Platform.runLater(() -> {
++            if (URL.contains("pointerLocation")) {
++                writeLog(line);
++            } else {
++                label.setText(line);
++            }
++        });
++
++    }
++
++    private void writeLog(final String line) {
++        try {
++            final RandomAccessFile raf = new RandomAccessFile(FILE_PATH, "rw");
++            raf.seek(FILE_PATH.length());
++            raf.write(line.getBytes());
++            raf.close();
++        } catch (final IOException ioe) {
++            ioe.printStackTrace();
++        }
++    }
++}
+\ No newline at end of file
+Index: src/main/java/org/pbc/logViewer/threads/DataViewer.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/threads/DataViewer.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/threads/DataViewer.java	(working copy)
+@@ -0,0 +1,77 @@
++package org.pbc.logViewer.threads;
++
++import javafx.application.Platform;
++import javafx.scene.control.Label;
++import org.pbc.logViewer.utils.MessageConstant;
++
++import java.io.IOException;
++import java.io.RandomAccessFile;
++
++import static org.pbc.logViewer.launcher.AppConstants.MAX_LINES;
++import static org.pbc.logViewer.launcher.Main.FILE_PATH;
++
++public class DataViewer implements Runnable {
++
++    private volatile boolean keepAlive = true;
++    private final Label label;
++
++    public DataViewer(final Label label) {
++        this.label = label;
++    }
++
++    public void destroy() {
++        this.keepAlive = false;
++    }
++
++    @Override
++    public void run() {
++        while (keepAlive) {
++            try {
++                Platform.runLater(() -> label.setText(tailFile()));
++                if (label.getText().isEmpty()) {
++                    Platform.runLater(() -> label.setText(MessageConstant.TXT_LOADING_LOG));
++                }
++                Thread.sleep(1000);
++            } catch (final InterruptedException e) {
++                //Do Nothing
++            } catch (final Exception e) {
++                Platform.runLater(() -> label.setText(MessageConstant.TXT_LOADING_LOG));
++            }
++        }
++    }
++
++    private String tailFile() {
++        if (FILE_PATH.exists()) {
++            try (RandomAccessFile fileHandler = new RandomAccessFile(FILE_PATH, "r")) {
++                final long fileLength = fileHandler.length() - 1;
++                final StringBuilder sb = new StringBuilder();
++                int line = 0;
++
++                for (long filePointer = fileLength; filePointer != -1; filePointer--) {
++                    fileHandler.seek(filePointer);
++                    final int readByte = fileHandler.readByte();
++
++                    if (readByte == 0xA) {
++                        if (filePointer < fileLength) {
++                            line = line + 1;
++                        }
++                    } else if (readByte == 0xD) {
++                        if (filePointer < fileLength - 1) {
++                            line = line + 1;
++                        }
++                    }
++                    if (line >= MAX_LINES * 2) {
++                        break;
++                    }
++                    sb.append((char) readByte);
++                }
++                return sb.reverse().toString();
++            } catch (final IOException e) {
++                e.printStackTrace();
++                return MessageConstant.TXT_LOADING_LOG;
++            }
++        } else {
++            return MessageConstant.TXT_LOADING_LOG;
++        }
++    }
++}
+Index: src/main/java/org/pbc/logViewer/utils/BlockStatusEnum.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/utils/BlockStatusEnum.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/utils/BlockStatusEnum.java	(working copy)
+@@ -0,0 +1,23 @@
++package org.pbc.logViewer.utils;
++
++public enum BlockStatusEnum {
++
++    UNVAILABLE("block_unvailable"), SAVED("block_saved"), INPROCESS("block_inprocess"), BLOCK_TO_BE_CREATED(
++            "block_to_be_created"), SAVE_FAILED("block_save_failed"), ERROR_OCCURED(
++            "error occured"), DELETED("block_deleted"), BLOCK_DELETE_IN_PROCESS("block_delete_processing");
++
++    private final String value;
++
++    BlockStatusEnum(final String value) {
++        this.value = value;
++    }
++
++    public BlockStatusEnum getByValue(final String value) {
++        for (final BlockStatusEnum blockEnum : values()) {
++            if (blockEnum.value.equals(value)) {
++                return blockEnum;
++            }
++        }
++        return null;
++    }
++}
+Index: src/main/java/org/pbc/logViewer/utils/MessageConstant.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/utils/MessageConstant.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/utils/MessageConstant.java	(working copy)
+@@ -0,0 +1,21 @@
++package org.pbc.logViewer.utils;
++
++public interface MessageConstant {
++    String DEFAULT_TITLE = "PBC NODE 1 Log Viewer";
++    String DIALOG_TITLE = "Node Chooser Dialog";
++    String DIALOG_HEADER_TEXT = "Select a Node to continue";
++    String NODE1 = "PBC NODE 1";
++    String NODE2 = "PBC NODE 2";
++    String NODE3 = "PBC NODE 3";
++    String TXT_REFRESH_INTERVAL = "Refresh Time Interval: ";
++    String TXT_INTERVAL_SECONDS = "Time interval(in second)";
++    String TXT_NODE1_VIEWER = "PBC NODE 1 Log Viewer";
++    String TXT_NODE2_VIEWER = "PBC NODE 2 Log Viewer";
++    String TXT_NODE3_VIEWER = "PBC NODE 3 Log Viewer";
++    String TXT_LOADING_LOG = "Loading logs...";
++    String TXT_ENTER = "Enter";
++    String PROBLEM_FACING_STATICS = "Facing problem in fetching statistics right now.";
++    String NO_BLOCK = "There is no block present at this node right now.";
++    String NO_SEARCH_RESULT = "No block info result for your search.";
++    String TXT_LOADING_STATICS = "Loading statistics...";
++}
+Index: src/main/java/org/pbc/logViewer/utils/StringConstants.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/utils/StringConstants.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/utils/StringConstants.java	(working copy)
+@@ -0,0 +1,8 @@
++package org.pbc.logViewer.utils;
++
++public interface StringConstants {
++    String EMPTY_STRING = "";
++    String SPACE = " ";
++    String BUTTON_GO = "GO";
++    String ERR = "error";
++}
+Index: src/main/java/org/pbc/logViewer/utils/Tail.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/utils/Tail.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/utils/Tail.java	(working copy)
+@@ -0,0 +1,49 @@
++package org.pbc.logViewer.utils;
++
++import java.io.IOException;
++import java.nio.file.Files;
++import java.nio.file.Path;
++import java.nio.file.Paths;
++import java.util.List;
++import java.util.stream.Collectors;
++import java.util.stream.IntStream;
++import java.util.stream.Stream;
++
++public class Tail {
++    private static final class RingBuffer {
++        private final int limit;
++        private final String[] data;
++        private int counter = 0;
++
++        RingBuffer(final int limit) {
++            this.limit = limit;
++            this.data = new String[limit];
++        }
++
++        void collect(final String line) {
++            data[counter++ % limit] = line;
++        }
++
++        List<String> contents() {
++            return IntStream.range(counter < limit ? 0 : counter - limit, counter)
++                    .mapToObj(index -> data[index % limit])
++                    .collect(Collectors.toList());
++        }
++
++    }
++
++    private static List<String> tailFile(final Path source, final int limit) throws IOException {
++
++        try (Stream<String> stream = Files.lines(source)) {
++            final RingBuffer buffer = new RingBuffer(limit);
++            stream.forEach(buffer::collect);
++
++            return buffer.contents();
++        }
++
++    }
++
++    public static void main(final String[] args) throws IOException {
++        tailFile(Paths.get(args[0]), 10).forEach(System.out::println);
++    }
++}
+Index: src/main/java/org/pbc/logViewer/utils/Utility.java
+===================================================================
+--- src/main/java/org/pbc/logViewer/utils/Utility.java	(revision 0)
++++ src/main/java/org/pbc/logViewer/utils/Utility.java	(working copy)
+@@ -0,0 +1,24 @@
++package org.pbc.logViewer.utils;
++
++import java.security.MessageDigest;
++
++public final class Utility {
++
++    public static String calculateHash(final byte fileBytes[], final String algoName) {
++        try {
++            final MessageDigest digest = MessageDigest.getInstance(algoName);
++            final byte[] bytesHash = digest.digest(fileBytes);
++            return convertByteArrayToHexString(bytesHash);
++        } catch (final Exception e) {
++            return StringConstants.EMPTY_STRING;
++        }
++    }
++
++    private static String convertByteArrayToHexString(final byte[] arrayBytes) {
++        final StringBuilder stringBuffer = new StringBuilder();
++        for (final byte arrayByte : arrayBytes) {
++            stringBuffer.append(Integer.toString((arrayByte & 0xff) + 0x100, 16).substring(1));
++        }
++        return stringBuffer.toString();
++    }
++}
+Index: src/main/resources/log.fxml
+===================================================================
+--- src/main/resources/log.fxml	(revision 0)
++++ src/main/resources/log.fxml	(working copy)
+@@ -0,0 +1,20 @@
++<?xml version="1.0" encoding="UTF-8"?>
++
++<?import javafx.geometry.Insets?>
++<?import javafx.scene.control.Label?>
++<?import javafx.scene.control.ScrollPane?>
++<?import javafx.scene.layout.*?>
++<AnchorPane id="AnchorPane" prefHeight="1000" prefWidth="1000" xmlns:fx="http://javafx.com/fxml/1"
++            xmlns="http://javafx.com/javafx/8" fx:controller="org.pbc.logViewer.controller.LogController">
++    <ScrollPane fx:id="scrollPane" AnchorPane.bottomAnchor="0.0"
++                AnchorPane.leftAnchor="0.0"
++                AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0" vvalue="1.0" fitToWidth="true" cache="true">
++        <Pane>
++            <padding>
++                <Insets bottom="10"/>
++            </padding>
++            <Label fx:id="labelLog" layoutX="14.0" layoutY="14.0" minHeight="NaN" wrapText="true"
++                   cache="true"/>
++        </Pane>
++    </ScrollPane>
++</AnchorPane>
+\ No newline at end of file
+Index: src/main/resources/main.fxml
+===================================================================
+--- src/main/resources/main.fxml	(revision 0)
++++ src/main/resources/main.fxml	(working copy)
+@@ -0,0 +1,14 @@
++<?import javafx.scene.control.Tab?>
++<?import javafx.scene.control.TabPane?>
++<?import javafx.scene.layout.GridPane?>
++<GridPane fx:controller="org.pbc.logViewer.controller.MainController"
++          xmlns:fx="http://javafx.com/fxml" hgap="10" vgap="10">
++    <TabPane fx:id="tabPane">
++        <Tab text="Logs">
++            <fx:include fx:id="logTabPage" source="log.fxml"/>
++        </Tab>
++        <Tab text="Statistics">
++            <fx:include fx:id="statisticsTabPage" source="statistics.fxml"/>
++        </Tab>
++    </TabPane>
++</GridPane>
+\ No newline at end of file
+Index: src/main/resources/statistics.fxml
+===================================================================
+--- src/main/resources/statistics.fxml	(revision 0)
++++ src/main/resources/statistics.fxml	(working copy)
+@@ -0,0 +1,95 @@
++<?xml version="1.0" encoding="UTF-8"?>
++
++<?import javafx.geometry.*?>
++<?import javafx.scene.control.*?>
++<?import javafx.scene.layout.*?>
++<?import javafx.scene.text.Font?>
++<?import javafx.scene.text.TextFlow?>
++<AnchorPane id="AnchorPane" prefHeight="1000" prefWidth="1000" xmlns="http://javafx.com/javafx/8.0.121"
++            xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.pbc.logViewer.controller.StatisticsController">
++
++    <fx:define>
++        <ToggleGroup fx:id="radioToggle"/>
++    </fx:define>
++
++    <ScrollPane fx:id="scrollPane" vvalue="1.0" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0"
++                AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
++        <Pane fx:id="pane">
++            <VBox>
++                <padding>
++                    <Insets bottom="20" left="20" right="20" top="20"/>
++                </padding>
++                <HBox>
++                    <Label layoutX="14.0" layoutY="14.0" minHeight="NaN" text="Total Blocks: " wrapText="true"/>
++                    <Label fx:id="labelTotalBlocks" layoutX="14.0" layoutY="14.0" minHeight="NaN" text="0"
++                           wrapText="true">
++                        <padding>
++                            <Insets right="40"/>
++                        </padding>
++                    </Label>
++
++                    <Label layoutX="14.0" layoutY="14.0" minHeight="NaN" text="Delivered Blocks: " wrapText="true"/>
++                    <Label fx:id="labelDeliveredBlocks" layoutX="14.0" layoutY="14.0" minHeight="NaN" text="0"
++                           wrapText="true">
++                        <padding>
++                            <Insets right="40"/>
++                        </padding>
++                    </Label>
++
++                    <Label layoutX="14.0" layoutY="14.0" minHeight="NaN" text="Available Blocks: " wrapText="true"/>
++                    <Label fx:id="labelAvailableBlocks" layoutX="14.0" layoutY="14.0" minHeight="NaN"
++                           text="0" wrapText="true">
++                        <padding>
++                            <Insets right="40"/>
++                        </padding>
++                    </Label>
++                    <TextFlow textAlignment="RIGHT">
++                        <Hyperlink fx:id="hyRefresh" alignment="CENTER_RIGHT" contentDisplay="RIGHT"
++                                   graphicTextGap="3.0" text="Refresh" wrapText="true">
++                            <padding>
++                                <Insets top="-1.5" left="5"/>
++                            </padding>
++                        </Hyperlink>
++                    </TextFlow>
++                </HBox>
++
++                <HBox id="searchPane" spacing="5.0">
++                    <padding>
++                        <Insets top="10"/>
++                    </padding>
++                    <padding>
++                        <Insets bottom="1.0" top="10"/>
++                    </padding>
++                    <TextField fx:id="txtSearch" prefWidth="460" HBox.hgrow="NEVER"
++                               promptText="Enter TxnId to search block"/>
++                    <Button fx:id="btnSearch" mnemonicParsing="false" text="Search" HBox.hgrow="NEVER"
++                            disable="true"/>
++                </HBox>
++                <HBox spacing="10">
++                    <padding>
++                        <Insets top="10"/>
++                    </padding>
++                    <Label text="Search BLOCK based on: "/>
++                    <RadioButton fx:id="rbTxnId" text="Transaction Id" selected="true" userData="Transaction Id"
++                                 toggleGroup="$radioToggle"/>
++                    <RadioButton fx:id="rbHashTxnId" text="Hash of Transaction Id" userData="Hash of Transaction Id"
++                                 toggleGroup="$radioToggle"/>
++                </HBox>
++                <Label layoutX="14.0" layoutY="14.0" minHeight="NaN" text="Blocks Info:-">
++                    <font>
++                        <Font name="Arial Bold" size="16"/>
++                    </font>
++                    <padding>
++                        <Insets top="10"/>
++                    </padding>
++                </Label>
++                <Label minWidth="150" HBox.hgrow="ALWAYS" text="---------------------"/>
++                <Label fx:id="labelBlocksInfo" layoutX="14.0" layoutY="14.0" minHeight="NaN" HBox.hgrow="ALWAYS">
++                    <padding>
++                        <Insets top="10" left="10"/>
++                    </padding>
++                </Label>
++            </VBox>
++        </Pane>
++    </ScrollPane>
++</AnchorPane>

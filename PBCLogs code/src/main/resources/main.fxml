@@ -1,0 +1,14 @@
+<?import javafx.scene.control.Tab?>
+<?import javafx.scene.control.TabPane?>
+<?import javafx.scene.layout.GridPane?>
+<GridPane fx:controller="org.pbc.logViewer.controller.MainController"
+          xmlns:fx="http://javafx.com/fxml" hgap="10" vgap="10">
+    <TabPane fx:id="tabPane">
+        <Tab text="Logs">
+            <fx:include fx:id="logTabPage" source="log.fxml"/>
+        </Tab>
+        <Tab text="Statistics">
+            <fx:include fx:id="statisticsTabPage" source="statistics.fxml"/>
+        </Tab>
+    </TabPane>
+</GridPane>
